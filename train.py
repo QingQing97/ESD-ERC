@@ -219,7 +219,7 @@ def train_or_eval_model(dataset, mode, model, main_loss_function, sub_loss_funct
         lp1_ = log_prob1.transpose(0, 1).contiguous().view(-1, log_prob1.size()[2]) ## utt_num, label_num
         ## print(lp1_)
         ## print(lp1_.shape)
-        ## torch.Size([6, 7]   预测的logits, 不在 0-1 之间  -->    去看model里面有没有softmax
+
         labels1_ = label1.view(-1)                                ## utt_num 真实标签
         loss1 = main_loss_function(lp1_, labels1_, loss_mask)     ## 1 针对单个对话的整体loss
         ## 此处可添加有监督的对比学习部分
