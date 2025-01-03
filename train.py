@@ -27,9 +27,6 @@ surprise	6
 def create_class_weight(mu=1):
     unique = [0, 1, 2, 3, 4, 5, 6]
     labels_dict = {0: 1022, 1: 85572, 2: 353, 3: 174, 4: 12885, 5: 1150, 6: 1823}
-    # the original weights in COSMIC:
-    # labels_dict = {0: 12885, 1: 85572, 2: 1022, 3: 1150, 4: 174, 5: 1823, 6: 353}
-    # 0 happy, 1 neutral, 2 anger, 3 sad, 4 fear, 5 surprise, 6 disgust 
     total = np.sum(list(labels_dict.values()))
     weights = []
     for key in unique:
@@ -53,7 +50,6 @@ def configure_optimizers(model, weight_decay, learning_rate, adam_epsilon):
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
-            # "bias"和"LayerNorm.weight"不通过AdamW调整
             "params":  ([p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)]),
             "weight_decay": 0.0,
         },
@@ -106,7 +102,7 @@ def configure_dataloaders(dataset, classify, multitask, batch_size):
 ## 评价指标计算部分
 def metric_helper(dataset, labels, preds, masks, losses, task_type):
     if preds != []:
-        ## 预测标签[5 5 5 ... 0 0 4] 
+        ## 预测标签
         preds = np.concatenate(preds)
         ## 真实标签
         labels = np.concatenate(labels)
@@ -214,15 +210,11 @@ def train_or_eval_model(dataset, mode, model, main_loss_function, sub_loss_funct
             with torch.no_grad():
                 log_prob1, log_prob2 = model(conversations, subindex, lengths, umask, qmask)
         
-        ## 仅考虑 batch_size=1 的情况
-        ## Contiguous用法: https://blog.csdn.net/Z199448Y/article/details/89384158
         lp1_ = log_prob1.transpose(0, 1).contiguous().view(-1, log_prob1.size()[2]) ## utt_num, label_num
-        ## print(lp1_)
-        ## print(lp1_.shape)
 
         labels1_ = label1.view(-1)                                ## utt_num 真实标签
         loss1 = main_loss_function(lp1_, labels1_, loss_mask)     ## 1 针对单个对话的整体loss
-        ## 此处可添加有监督的对比学习部分
+
         pred1_ = torch.argmax(lp1_, 1)                            ## utt_num 预测标签list
         preds1.append(pred1_.data.cpu().numpy())
         labels1.append(labels1_.data.cpu().numpy())
@@ -254,7 +246,6 @@ def train_or_eval_model(dataset, mode, model, main_loss_function, sub_loss_funct
                 loss.backward()
                 optimizer.step()
     ## 主辅任务的评价指标拼一起了
-    ## avg_loss, avg_accuracy, fscores, labels, preds, masks
     return list(zip(metric_helper(dataset, labels1, preds1, masks1, losses1, 'main'), metric_helper(dataset, labels2, preds2, masks2, losses2, 'sub')))
                  
 
@@ -366,8 +357,6 @@ def result_helper(valid_fscores, test_fscores, valid_losses, rf, lf, best_label,
     
     ## 最优结果输出
     elif dataset == 'meld':
-        ## numpy.argmin(a, axis=None, out=None)[source]：Returns the indices of the minimum values along an axis. 
-        ## By default, the index is into the flattened array, otherwise along the specified axis.
         score1 = test_fscores[0][np.argmin(valid_losses)]
         score2 = test_fscores[0][np.argmax(valid_fscores[0])]
         score3 = test_fscores[1][np.argmin(valid_losses)]
@@ -506,11 +495,6 @@ if __name__ == '__main__':
             loss_weights = torch.FloatTensor(create_class_weight(args.mu))
         else:   
             loss_weights = torch.FloatTensor([4, 0.3, 8, 8, 2, 4, 4])
-            # counts {0: 1022, 1: 85572, 2: 353, 3: 174, 4: 12885, 5: 1150, 6: 1823}
-            # the original weights in COSMIC:
-            # loss_weights = torch.FloatTensor([2, 0.3, 4, 4, 8, 4, 8])
-            # 0 happy, 1 neutral, 2 anger, 3 sad, 4 fear, 5 surprise, 6 disgust
-            # counts {0: 12885, 1: 85572, 2: 1022, 3: 1150, 4: 174, 5: 1823, 6: 353}
             
         main_loss_function  = MaskedNLLLoss(loss_weights.cuda())
     elif args.class_weight == 'sklearn':
@@ -564,7 +548,7 @@ if __name__ == '__main__':
 
     for e in range(n_epochs):
         start_time = time.time()                                               ## 记录程序开始的时间                   
-        print('---------train--------')                                        ## e: epoch数  # xxx_loader用于加载数据集 ## acc_steps default='1' 含义存疑
+        print('---------train--------')                                        
         train_result = train_or_eval_model(dataset, 0, model, main_loss_function, sub_loss_function, train_loader, e, acc_steps, optimizer, True, grad_acc)
         print('-----------valid-----------')                                   
         valid_result = train_or_eval_model(dataset, 1, model, main_loss_function, sub_loss_function, valid_loader, e, acc_steps)
